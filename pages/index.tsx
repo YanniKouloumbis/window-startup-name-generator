@@ -1,118 +1,167 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Head from 'next/head';
+import 'tailwindcss/tailwind.css';
 
-interface Message {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
+const Toast = ({ showToast, message }) => {
+  return (
+    <>
+      {showToast && (
+        <div className="fixed bottom-4 right-4 bg-blue-500 text-white py-2 px-4 rounded-md shadow-md transition-all duration-300 ease-in-out">
+          {message}
+        </div>
+      )}
+    </>
+  );
+};
 
-const App: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+const IndexPage = () => {
+  const [keywords, setKeywords] = useState('');
+  const [startupNames, setStartupNames] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
+  const aiRef = useRef(null);
 
-  const handleSendMessage = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!inputValue) return;
-
-    const newMessage: Message = { role: 'user', content: inputValue };
-    setMessages((prevMessages) => [...prevMessages, newMessage]);
-    setInputValue('');
-
-    setLoading(true);
-
-    let updatedMessages = [...messages, newMessage];
-
-    const streamingOptions = {
-      temperature: 1,
-      maxTokens: 1000,
-      onStreamResult: (result?: { message: Message }, error?: Error) => {
-        if (error) {
-          console.error(error);
-          setLoading(false);
-        } else if (result) {
-          setLoading(false);
-
-          const lastMessage = updatedMessages[updatedMessages.length - 1];
-          if (lastMessage.role === 'user') {
-            setLoading(false);
-            updatedMessages = [
-              ...updatedMessages,
-              {
-                role: 'assistant',
-                content: result.message.content,
-              },
-            ];
-          } else {
-            updatedMessages = updatedMessages.map((message, index) => {
-              if (index === updatedMessages.length - 1) {
-                return {
-                  ...message,
-                  content: message.content + result.message.content,
-                };
-              }
-              return message;
-            });
-          }
-
-          setMessages(updatedMessages);
+  useEffect(() => {
+    const waitForAI = async () => {
+      let timeoutCounter = 0;
+      while (!window.ai) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        timeoutCounter += 100;
+        if (timeoutCounter >= 1000) {
+          setShowPopup(true);
+          break;
         }
-      },
+      }
+      aiRef.current = window.ai;
     };
+    waitForAI();
+  }, []);
 
-    if ((window as any)?.ai) {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (aiRef.current) {
+      setIsLoading(true);
+      const userQuery = `Based on this startup's keywords/description, create 6 unique and clever startup names. You are Silicon Valley's best startup namer, so make this interesting. keywords/description: ${keywords}\n\nRemember, you can only respond in JSON.`;
+
       try {
-        await (window as any).ai.getCompletion(
-          { messages: [{ role: 'system', content: 'You are a helpful assistant.' }, ...messages, newMessage] },
-          streamingOptions
+        const result = await aiRef.current.getCompletion(
+          {
+            messages: [
+              {
+  "role": "system",
+  "content": "JSON responses only. RESPONSE FORMAT: { \"startupNames\": [\n    \"name1\",\n    \"name2\",\n    \"name3\",\n    \"name4\",\n    \"name5\",\n\"name6\"\n  ]\n}"
+},
+              { role: 'user', content: userQuery }],
+          },
         );
-      } catch (e) {
-        setLoading(false);
-        console.error(e);
+        try {
+          const jsonResponse = JSON.parse(result.message.content);
+          console.log(jsonResponse)
+          setStartupNames(jsonResponse.startupNames);
+        } catch (error) {
+          console.error('Error parsing JSON:', error);
+        }
+      } catch (error) {
+        console.error('Error in getting completion:', error);
+      } finally {
+        setIsLoading(false);
       }
     }
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const handleCopyClick = (text) => {
+    navigator.clipboard.writeText(text);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2000);
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="w-full sm:w-3/4 lg:w-1/2 xl:w-1/2 bg-white shadow-lg rounded-lg p-6">
-        <h1 className="text-3xl font-bold mb-4">Next JS x window.ai</h1>
-        <div className="overflow-y-auto h-96 mb-4">
-          {messages.map((message, index) => (
-            <div key={index} className={`mb-2 ${message.role === 'user' ? 'text-right' : ''}`}>
-              <span className={`inline-block p-2 rounded-lg text-left ${message.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-300 text-black'}`}>
-                {message.content}
-              </span>
+    <div className="min-h-screen bg-gradient-to-r from-blue-400 to-purple-500 flex items-center">
+      <Head>
+        <title>Startup Name Generator</title>
+      </Head>
+
+      <div className="container mx-auto px-4 py-5">
+        <div className="bg-white p-8 rounded-lg shadow-md">
+          <h1 className="text-4xl font-semibold mb-5">Startup Name Generator</h1>
+{/* align items */}
+          <form onSubmit={handleSubmit} className="mb-5 flex flex-col">
+            <label htmlFor="keywords" className="block mb-2 text-lg font-semibold">
+             what is your startup about? (keywords, description, etc.)
+            </label>
+            {/* make all elements the same height */}
+            <div className="flex flex-col sm:flex-row">
+              <input
+                id="keywords"
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+                className="border border-gray-300 rounded-lg p-3 mb-2 sm:mb-0 sm:mr-4 transition-all duration-300 ease-in-out w-full"
+                required
+              />
+              <button
+                type="submit"
+                className="bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded ml-4 transition-all duration-300 ease-in-out w-64"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <div className="text-md"
+                  >Loading...</div>
+                ) : (
+                  <div className="text-md"
+                  >Generate Names</div>
+                )}
+              </button>
             </div>
-          ))}
-          <div ref={messagesEndRef}></div>
+          </form>
+
+          {startupNames.length > 0 && (
+            <div>
+              <h3 className='text-md mb-3'>Click on a name to copy it!</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {startupNames.map((name, index) => (
+                  <div
+                    key={index}
+                    className="bg-gray-100 hover:bg-gray-200 text-black p-5 rounded-lg shadow-md cursor-pointer transition-all duration-300 ease-in-out transform hover:scale-105"
+                    onClick={() => handleCopyClick(name)}
+                  >
+                    {name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-        <form onSubmit={handleSendMessage} className="flex">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            className="flex-grow border border-gray-300 rounded-lg p-2 text-sm focus:outline-none focus:border-blue-500"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className={`ml-2 bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold ${loading ? 'opacity-50' : ''}`}
-          >
-            {loading ? 'Sending...' : 'Send'}
-          </button>
-        </form>
       </div>
+      <Toast showToast={showToast} message="Copied to Clipboard" />
+      {showPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-8 rounded-lg shadow-md">
+            <h2 className="text-2xl font-semibold mb-4">
+              window.ai not detected
+            </h2>
+            <p className="mb-4">
+              Please install window.ai from{' '}
+              <a
+                href="https://windowai.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-500 underline"
+              >
+                windowai.io
+              </a>
+            </p>
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded transition-all duration-300 ease-in-out"
+              onClick={() => setShowPopup(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default App;
+export default IndexPage;
