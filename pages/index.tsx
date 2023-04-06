@@ -25,7 +25,7 @@ const IndexPage = () => {
   useEffect(() => {
     const waitForAI = async () => {
       let timeoutCounter = 0;
-      while (!window.ai) {
+      while (!(window as any).ai) {
         await new Promise((resolve) => setTimeout(resolve, 100));
         timeoutCounter += 100;
         if (timeoutCounter >= 1000) {
@@ -33,7 +33,7 @@ const IndexPage = () => {
           break;
         }
       }
-      aiRef.current = window.ai;
+      aiRef.current = (window as any).ai;
     };
     waitForAI();
   }, []);
